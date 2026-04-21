@@ -8,41 +8,50 @@ B_YELLOW='\033[1;33m'
 B_RED='\033[1;31m'
 NC='\033[0m'
 
-# Проверка на запуск от root
 if [ "$EUID" -ne 0 ]; then
-    echo -e "${B_RED}Ошибка: Пожалуйста, запустите скрипт от имени root (sudo).${NC}"
+    echo -e "${B_RED}Ошибка: Запустите от имени root.${NC}"
     exit 1
 fi
 
-echo -e "${B_CYAN}Настройка защиты AdGuard Home через fail2ban...${NC}"
+echo -e "${B_CYAN}Конфигурация AdGuard Home Protection (fail2ban)${NC}"
 
-# В /etc/fail2ban/filter.d/agh-tls.conf помещает
+# 1. Проверка и установка fail2ban
+if ! command -v fail2ban-client >/dev/null; then
+    echo -e "${B_YELLOW}Установка fail2ban...${NC}"
+    apt-get update -qq && apt-get install -y fail2ban -qq
+fi
+
+# 2. Создание фильтра
+echo -e "${B_YELLOW}Настройка фильтра agh-tls...${NC}"
 cat <<EOF > /etc/fail2ban/filter.d/agh-tls.conf
 [Definition]
-# Регулярное выражение для поиска ошибок TLS в выводе journalctl
 failregex = ^.*http: TLS handshake error from <HOST>:\d+:.*$
 ignoreregex =
 EOF
 
-# В /etc/fail2ban/jail.d/agh-tls.local помещает
+# 3. Создание конфигурации Jail
+echo -e "${B_YELLOW}Настройка параметров блокировки...${NC}"
 cat <<EOF > /etc/fail2ban/jail.d/agh-tls.local
 [agh-tls]
 enabled = true
-# Указываем порты, которые защищаем (HTTPS, DNS-over-TLS, Web UI)
 port    = 443,853,53,3000,4000
 filter  = agh-tls
-# Используем journald вместо чтения файла
 backend = systemd
 journalmatch = _SYSTEMD_UNIT=AdGuardHome.service
-# Параметры бана
 maxretry = 20
 findtime = 60
 bantime  = 24h
 EOF
 
-# Перезапускает fail2ban
-echo -e "${B_YELLOW}Перезапуск fail2ban...${NC}"
+# 4. Перезапуск службы
+echo -e "${B_CYAN}Перезапуск fail2ban...${NC}"
 systemctl restart fail2ban
 
-echo -e "${B_GREEN}Установка успешно завершена!${NC}"
-echo -e "${BOLD}Статус активного бана:${NC} ${B_RED}fail2ban-client status agh-tls${NC}"
+# 5. Проверка статуса
+if systemctl is-active --quiet fail2ban; then
+    echo -e "${B_GREEN}Защита AdGuard Home успешно настроена!${NC}"
+    echo -e "${BOLD}Для проверки статуса используйте:${NC} ${B_CYAN}fail2ban-client status agh-tls${NC}"
+else
+    echo -e "${B_RED}Ошибка: fail2ban не смог запуститься. Проверьте логи.${NC}"
+    exit 1
+fi
