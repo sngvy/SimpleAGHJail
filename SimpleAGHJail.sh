@@ -38,9 +38,12 @@ port    = 443,853,53,3000,4000
 filter  = agh-tls
 backend = systemd
 journalmatch = _SYSTEMD_UNIT=AdGuardHome.service
-maxretry = 20
-findtime = 60
-bantime  = 24h
+findtime = 180
+maxretry = 60
+bantime  = 2h
+bantime.increment = true
+bantime.factor = 4
+bantime.maxtime = 24h
 EOF
 
 # 4. Перезапуск службы
